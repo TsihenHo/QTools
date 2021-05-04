@@ -83,4 +83,8 @@ object ClassConfig {
     @JvmStatic
     val chatMessageClz: Class<*>
         get() = get(15, "data.ChatMessage")
+
+    @JvmStatic
+    val qqManagerFactoryClz: Class<*>
+        get() = get(16, "app.QQManagerFactory")
 }

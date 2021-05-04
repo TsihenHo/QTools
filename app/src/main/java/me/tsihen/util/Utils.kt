@@ -2,10 +2,14 @@ package me.tsihen.util
 
 import android.app.Activity
 import android.content.Context
+import java.io.File
 import java.util.*
 
 fun getApkPath(ctx: Context, packageName: String): String =
-    ctx.createPackageContext(packageName, Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY).packageResourcePath
+    ctx.createPackageContext(
+        packageName,
+        Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY
+    ).packageResourcePath
 
 fun getCurrActivity(): Activity? {
     try {
@@ -16,7 +20,11 @@ fun getCurrActivity(): Activity? {
         activitiesField.isAccessible = true
         (activitiesField[currThreadField[null]] as Map<*, *>).values.forEach {
             if (it == null) return@forEach
-            if (!getObject(it, "paused", Boolean::class.java)!!) return getObject(it, "activity", Activity::class.java)
+            if (!getObject(it, "paused", Boolean::class.java)!!) return getObject(
+                it,
+                "activity",
+                Activity::class.java
+            )
         }
     } catch (e: Exception) {
         log.e(e)
@@ -40,3 +48,4 @@ fun getSecondTimestamp(date: Date?): Int {
         0
     }
 }
+

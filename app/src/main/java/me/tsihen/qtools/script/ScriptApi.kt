@@ -15,16 +15,15 @@ import me.tsihen.config.ClassConfig.messageForPicClz
 import me.tsihen.config.ClassConfig.messageRecordClz
 import me.tsihen.config.ClassConfig.messageRecordFactoryClz
 import me.tsihen.config.ClassConfig.qqAppInterfaceClz
+import me.tsihen.config.ClassConfig.qqManagerFactoryClz
 import me.tsihen.config.ClassConfig.qqMessageFacadeClz
 import me.tsihen.config.ClassConfig.sessionInfoClz
 import me.tsihen.config.ClassConfig.testStructMsgClz
 import me.tsihen.config.ConfigManager.Companion.config
 import me.tsihen.qtools.hook.PttWrongTimeHook
-import me.tsihen.treflex.callMethod
-import me.tsihen.treflex.callStaticMethod
-import me.tsihen.treflex.canCastTo
+import me.tsihen.treflex.*
+import me.tsihen.treflex.filter.FieldFilter
 import me.tsihen.treflex.filter.MethodFilter
-import me.tsihen.treflex.getFirstMethod
 import me.tsihen.util.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -239,6 +238,7 @@ object ScriptApi {
     const val MSG_TYPE_TIP = -1013
     const val MSG_TYPE_SHAKE = -2020
     const val MSG_TYPE_SHOW_PHOTO = -5015
+    const val MSG_TYPE_REPLY = -1049
 
     @JvmStatic
     fun sendTip(data: MessageData, text: String) {
@@ -396,7 +396,7 @@ object ScriptApi {
     ) {
         try {
             val session = buildSessionInfo(data.friendUin, data.isGroup)
-            val curFriendUin = getObject<String>(session, "a|curFriendUin")
+            val curFriendUin = getObject(session, "a|curFriendUin", String::class.java)
             val curType = getObject<Int>(session, "a|curType")
             val msg = callStaticMethod(
                 chatActivityFacadeClz,
@@ -445,10 +445,11 @@ object ScriptApi {
                 curType,
                 curFriendUin,
                 path,
-                1,
+                uniseq,
                 false,
                 c,
                 1,
+                true,
                 0,
                 3,
                 true,
@@ -460,13 +461,15 @@ object ScriptApi {
                 msg,
                 0
             )
+            setObject(msg, "voiceLength", voiceLength)
             callStaticMethod(
                 chatActivityFacadeClz,
                 MethodFilter(returnType = Void.TYPE),
                 qqAppInterface,
+                session,
                 path,
                 -3,
-                1L
+                uniseq
             )
             setObject(msg, "voiceLength", voiceLength)
             callMethod(
@@ -476,6 +479,128 @@ object ScriptApi {
         } catch (e: Throwable) {
             log.e(e)
         }
+    }
+
+    @JvmStatic
+    fun sendReply(data: MessageData, text: String) {
+        try {
+            val oldMsg = data.__msg
+            val msg =
+                callStaticMethod(
+                    messageRecordFactoryClz,
+                    MethodFilter(name = "a"),
+                    MSG_TYPE_REPLY
+                )!!
+            msg.callVirtualMethod(
+                "init",
+                getAccountUin(),
+                data.friendUin,
+                getAccountUin(),
+                "value",
+                1L,
+                MSG_TYPE_REPLY,
+                if (data.isGroup) 1 else 0,
+                1L
+            )
+
+            val sourceMsgInfo = msg.javaClass.getDeclaredField("mSourceMsgInfo").type.newInstance()
+            sourceMsgInfo.callVirtualMethod("packSourceMsg", qqAppInterface, oldMsg)
+            setObject(
+                sourceMsgInfo,
+                "mSourceMsgTime",
+                getSecondTimestamp(Date(getObject(oldMsg!!, "time", Long::class.java)!!))
+            )
+            setObject(sourceMsgInfo, "origUid", getObject(oldMsg, "msgUid"))
+            setObject(sourceMsgInfo, "mSourceMsgSeq", getObject(oldMsg, "shmsgseq"))
+            setObject(
+                sourceMsgInfo,
+                "mSourceMsgSenderUin",
+                getObject(oldMsg, "senderuin").toString().toLong()
+            )
+            setObject(sourceMsgInfo, "mSourceMsgText", getObject(oldMsg, "msg"))
+            setObject(sourceMsgInfo, "mSourceMsgToUin", data.friendUin.toLong())
+
+            setObject(msg, "mSourceMsgInfo", sourceMsgInfo)
+            msg.callVirtualMethod( "setSourceMessageRecord", oldMsg)
+            setObject(msg, "msg", text)
+            msg.callVirtualMethod("prewrite")
+
+            val messageFacade = callMethod(
+                qqAppInterface!!,
+                MethodFilter(returnType = qqMessageFacadeClz, name = "a|getMessageFacade")
+            )!!
+            val finalMsg = messageRecordFactoryClz.callStaticMethod("a", msg)
+            callMethod(
+                messageFacade,
+                MethodFilter(name = "a|addAndSendMessage"),
+                finalMsg,
+                null,
+                true
+            )
+        } catch (e: Throwable) {
+            log.e(e)
+        }
+    }
+
+    @JvmStatic
+    fun shutUp(group: String, person: String, time: Long) {
+        getGagManager()?.callVirtualMethod("a", group, person, time)
+    }
+
+    @JvmStatic
+    fun shutUp(group: String, enable: Boolean) {
+        getGagManager()?.callVirtualMethod("a", group, if (enable) 268435455 else 0)
+    }
+
+    @JvmStatic
+    fun getFriends(): ArrayList<*> {
+        val mgr = getFriendsManager()
+        return try {
+            callMethod(
+                readField(
+                    mgr!!,
+                    true,
+                    FieldFilter(type = getClass("com.tencent.mobileqq.friend.api.IFriendDataService"))
+                )!!, MethodFilter(name = "a|getAllFriends", returnType = java.util.List::class.java)
+            ) as ArrayList<*>
+        } catch (e: Throwable) {
+            log.e(e)
+            ArrayList<Any>()
+        }
+    }
+
+    @JvmStatic
+    fun getFriendsInfo(uin: String): Any? {
+        getFriends().forEach {
+            if (getObject(it, "uin") == uin) return it
+        }
+        return null
+    }
+
+    private fun getGagManager(): Any? {
+        val i: Int = try {
+            getStaticObject(
+                qqManagerFactoryClz,
+                "TROOP_GAG_MANAGER",
+                Int::class.java
+            )!!
+        } catch (ignored: java.lang.Exception) {
+            48
+        }
+        return qqAppInterface!!.callVirtualMethod("getManager", i)
+    }
+
+    private fun getFriendsManager(): Any? {
+        val i: Int = try {
+            getStaticObject(
+                qqManagerFactoryClz,
+                "FRIENDS_MANAGER",
+                Int::class.java
+            )!!
+        } catch (ignored: java.lang.Exception) {
+            51
+        }
+        return qqAppInterface!!.callVirtualMethod("getManager", i)
     }
 
     init {
@@ -609,7 +734,7 @@ open class MessageData {
                 setObject(session, "a", senderUin, String::class.java)
                 val atList = LinkedList<String>()
                 try {
-                    val jsonObject: JSONObject = getObject(messageRecord, "mExJsonObject")
+                    val jsonObject: JSONObject = getObject(messageRecord, "mExJsonObject", null)
                         ?: throw NoSuchFieldException("ignored")
                     if (jsonObject.has("troop_at_info_list")) {
                         val atMemberString = jsonObject.getString("troop_at_info_list")
@@ -685,6 +810,3 @@ open class MessageData {
         }
     }
 }
-
-@Target(AnnotationTarget.FUNCTION)
-annotation class UnsafeApi

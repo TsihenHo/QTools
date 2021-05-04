@@ -2,4 +2,5 @@
     <string name="app_name">QQ工具</string>
     <string name="xposed_desc">QQ工具
         作者：子恒</string>
+    <string name="about"><strong>关于</strong></string>
 </resources>

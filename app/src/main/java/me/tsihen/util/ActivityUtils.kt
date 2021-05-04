@@ -13,10 +13,11 @@ import android.content.pm.ActivityInfo
 import android.os.*
 import android.view.KeyEvent
 import android.view.MotionEvent
-import de.robv.android.xposed.XposedHelpers
 import me.tsihen.qtools.MainHook
 import me.tsihen.treflex.callStaticMethod
+import me.tsihen.treflex.filter.FieldFilter
 import me.tsihen.treflex.filter.MethodFilter
+import me.tsihen.treflex.getFirstField
 import java.io.Serializable
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -35,7 +36,7 @@ private fun hookAMS() {
     val objSingleton =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             getStaticObject<Any>(
-                getClass("android.app.ActivityManager"),
+                Class.forName("android.app.ActivityManager"),
                 "IActivityManagerSingleton",
                 null
             )
@@ -44,7 +45,7 @@ private fun hookAMS() {
 
     val mInstance = getObject<Any>(objSingleton, "mInstance")!!
     val proxyInstance = Proxy.newProxyInstance(
-        Thread.currentThread().contextClassLoader,
+        MainHook::class.java.classLoader,
         arrayOf(getClass("android.app.IActivityManager")),
         IActivityManagerHandler(mInstance)
     )
@@ -80,23 +81,31 @@ private fun hookInstrumentation() {
 }
 
 private fun hookHandler() {
-    val activityThread =
-        XposedHelpers.getStaticObjectField(
+    val activityThread: Any =
+        getStaticObject(
             getClass("android.app.ActivityThread"),
             "sCurrentActivityThread"
         )
             ?: throw NullPointerException("找不到 activityThread")
-    val mH = XposedHelpers.getObjectField(activityThread, "mH")
+    val mH: Any = getObject(activityThread, "mH")
         ?: throw NullPointerException("找不到 mH")
-    val mHCallbackField = XposedHelpers.findField(mH.javaClass, "mCallback")
+    val mHCallbackField = getFirstField(mH.javaClass, true, FieldFilter(name = "mCallback"))
     val mHCallback = mHCallbackField[mH]
     mHCallbackField[mH] = Handler.Callback { msg ->
         try {
             if (msg.what == 100) {
                 val intentField = msg.obj.javaClass.getDeclaredField("intent")
+                intentField.isAccessible = true
                 val targetIntent =
                     (intentField.get(msg.obj) as Intent).getParcelableExtra<Intent>(TARGET_INTENT)
                 if (targetIntent != null) intentField.set(msg.obj, targetIntent)
+                intentField[msg.obj]?.let {
+                    getObject(
+                        it,
+                        "mExtras",
+                        Bundle::class.java
+                    )?.classLoader = loader
+                }
             } else if (msg.what == 159) {
                 val mActivityCallbacks = getObject(msg.obj, "mActivityCallbacks", List::class.java)
                 mActivityCallbacks?.forEach {
@@ -107,6 +116,7 @@ private fun hookHandler() {
                         intent.getParcelableExtra<Intent>(TARGET_INTENT)?.let { proxyIntent ->
                             mIntentField[it] = proxyIntent
                         }
+                        getObject(intent, "mExtras", Bundle::class.java)?.classLoader = loader
                     }
                 }
             }
@@ -205,7 +215,6 @@ private class MyInstrumentation(private val mBase: Instrumentation) : Instrument
         mBase.addResults(results)
     }
 
-
     override fun finish(resultCode: Int, results: Bundle?) {
         mBase.finish(resultCode, results)
     }
@@ -233,7 +242,6 @@ private class MyInstrumentation(private val mBase: Instrumentation) : Instrument
     override fun getTargetContext(): Context? {
         return mBase.targetContext
     }
-
 
     @SuppressLint("NewApi")
     override fun getProcessName(): String? {
@@ -274,7 +282,7 @@ private class MyInstrumentation(private val mBase: Instrumentation) : Instrument
 
     @SuppressLint("NewApi")
     override fun startActivitySync(intent: Intent, options: Bundle?): Activity {
-        return mBase.startActivitySync(intent, options)
+        return super.startActivitySync(intent, options)
     }
 
 
@@ -386,6 +394,8 @@ private class MyInstrumentation(private val mBase: Instrumentation) : Instrument
 
     override fun callActivityOnCreate(activity: Activity?, icicle: Bundle?) {
         activity?.let { MainHook.instance.injectModuleRes(it) }
+        if (activity?.javaClass?.name?.startsWith("me.tsihen.qtools") == true) icicle?.classLoader =
+            MainHook::class.java.classLoader
         mBase.callActivityOnCreate(activity, icicle)
     }
 
@@ -395,6 +405,8 @@ private class MyInstrumentation(private val mBase: Instrumentation) : Instrument
         persistentState: PersistableBundle?
     ) {
         activity?.let { MainHook.instance.injectModuleRes(it) }
+        if (activity?.javaClass?.name?.startsWith("me.tsihen.qtools") == true) icicle?.classLoader =
+            MainHook::class.java.classLoader
         mBase.callActivityOnCreate(activity, icicle, persistentState)
     }
 
@@ -515,13 +527,18 @@ class IActivityManagerHandler(private val mOrigin: Any) : InvocationHandler {
             }
             if (index != -1) {
                 val raw = args[index] as Intent
-                val wrapper = Intent()
-                wrapper.setClassName(
-                    PACKAGE_QQ,
-                    "com.tencent.mobileqq.activity.photo.CameraPreviewActivity"
-                )
-                wrapper.putExtra(TARGET_INTENT, raw)
-                args[index] = wrapper
+                val componentName = raw.component
+                val hostApp = HostApp.application
+                if (componentName != null && hostApp.packageName == componentName.packageName && componentName.className.startsWith(
+                        PACKAGE_SELF)) {
+                    val wrapper = Intent()
+                    wrapper.setClassName(
+                        PACKAGE_QQ,
+                        "com.tencent.mobileqq.activity.photo.CameraPreviewActivity"
+                    )
+                    wrapper.putExtra(TARGET_INTENT, raw)
+                    args[index] = wrapper
+                }
             }
         }
         return method.invoke(mOrigin, *(args ?: arrayOf()))

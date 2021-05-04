@@ -38,6 +38,7 @@
     <color name="shapeColor_3">#1E3DDC84</color>
     <color name="shapeColor_4">#1EF44336</color>
     <color name="shapeColor_5">#FF5F6368</color>
+    <color name="shapeColor_6">#0f9d58</color>
+    <color name="shapeColor_7">#0A202124</color>
     <color name="dividerColor">#1F202124</color>
-    <color name="shapeColor_6">#0A202124</color>
 </resources>

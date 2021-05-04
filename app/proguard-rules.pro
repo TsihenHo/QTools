@@ -23,6 +23,7 @@
 -keep class me.** { *; }
 -keep class de.** { *; }
 -keep class org.** { *; }
+-keep class bsh.** { *; }
 
 -keep public class * extends android.app.Activity
 -keep public class * extends android.app.Application

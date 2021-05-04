@@ -1,7 +1,12 @@
 package me.tsihen.qtools
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.view.View
+import androidx.core.content.ContextCompat
 import dalvik.system.PathClassLoader
 import de.robv.android.xposed.IXposedHookLoadPackage
 import de.robv.android.xposed.XC_MethodHook
@@ -48,8 +53,9 @@ class MainHook : IXposedHookLoadPackage {
             "$PACKAGE_QQ.activity.SplashActivity"
         ).getDeclaredMethod("doOnCreate", Bundle::class.java).before {
             if (secondInit) return@before
-            val ctx = it.thisObject as Context
+            val ctx = it.thisObject as Activity
             loader = classLoader
+            HostApp.init(ctx.application)
             performHook(ctx)
             secondInit = true
         }
@@ -58,7 +64,6 @@ class MainHook : IXposedHookLoadPackage {
 
     private fun performHook(ctx: Context) {
         if (thirdInit) return
-        // todo
         try {
             inject(ctx)
             XposedHelpers.findAndHookMethod(
@@ -89,7 +94,6 @@ class MainHook : IXposedHookLoadPackage {
         injectModuleRes(ctx)
         // Second, inject activity
         injectActivity(ctx)
-        // todo
     }
 
     private var modulePath = ""

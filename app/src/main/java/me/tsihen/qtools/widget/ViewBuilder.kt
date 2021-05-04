@@ -2,6 +2,7 @@ package me.tsihen.qtools.widget
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CompoundButton
@@ -23,6 +24,7 @@ import me.tsihen.qtools.script.Script
 import me.tsihen.qtools.script.ScriptManager
 import me.tsihen.util.dip2sp
 import me.tsihen.util.startActivity
+import me.tsihen.xposed.AbsHook
 
 object ViewBuilder {
     const val R_ID_TITLE = 0x3d00ff00
@@ -85,6 +87,19 @@ object ViewBuilder {
         }
 
         return root
+    }
+
+    fun itemFeature(
+        ctx: Context,
+        title: CharSequence,
+        desc: CharSequence,
+        hook: AbsHook,
+        additionalListener: CompoundButton.OnCheckedChangeListener?
+    ): ConstraintLayout {
+        return itemSwitch(ctx, title, desc, hook.isEnabled()) { view, on ->
+            hook.setEnabled(on)
+            additionalListener?.onCheckedChanged(view, on)
+        }
     }
 
     @JvmStatic
@@ -242,13 +257,13 @@ object ViewBuilder {
         return root
     }
 
-    class RecyclerViewBuilder<T : View> @JvmOverloads constructor(
+    class RecyclerViewBuilder @JvmOverloads constructor(
         private val ctx: Context,
         private val margin: Int,
         @RecyclerView.Orientation private val orientation: Int = LinearLayoutManager.VERTICAL
     ) {
         private val result = RecyclerView(ctx)
-        private val viewList = mutableListOf<T>()
+        private val viewList = mutableListOf<View>()
 
         fun build(): RecyclerView = result.apply {
             val mgr = LinearLayoutManager(ctx)
@@ -271,15 +286,16 @@ object ViewBuilder {
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     ).apply {
                         setMargins(margin, margin, margin, 0)
+                        gravity = Gravity.CENTER_HORIZONTAL
                     }
                     holder.item.addView(v)
                 }
             }
         }
 
-        fun add(v: T): Boolean = viewList.add(v)
-        fun add(v: T, index: Int): Unit = viewList.add(index, v)
-        fun delete(index: Int): T = viewList.removeAt(index)
+        fun add(v: View): Boolean = viewList.add(v)
+        fun add(v: View, index: Int): Unit = viewList.add(index, v)
+        fun delete(index: Int): View = viewList.removeAt(index)
 
         class MyViewHolder(var item: LinearLayout) : RecyclerView.ViewHolder(item.apply {
             layoutParams = ViewGroup.LayoutParams(

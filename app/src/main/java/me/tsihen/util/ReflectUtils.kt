@@ -36,6 +36,21 @@ fun <T> getObject(
     ) as T?
 }
 
+@Suppress("UNCHECKED_CAST")
+fun getObject(
+    obj: Any,
+    name: String
+): Any? {
+    return readField(
+        obj,
+        filter = FieldFilter(
+            beStatic = false,
+            name = name
+        ),
+        findInParent = true
+    )
+}
+
 fun <T> getObjectOrNull(
     obj: Any,
     name: String,

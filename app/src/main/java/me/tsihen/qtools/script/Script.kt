@@ -42,7 +42,12 @@ class Script(val file: File) {
             ) as BshMethod
         )
         engine.eval("import static me.tsihen.qtools.script.ScriptApi.*;")
-        engine.eval(file.reader())
+        try {
+            engine.eval(file.reader())
+        } catch (e: Throwable) {
+            log.e(e)
+            return
+        }
         init = true
     }
 
